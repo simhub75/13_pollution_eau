@@ -21,6 +21,7 @@ from zipfile import ZipFile
 
 import duckdb
 import requests
+from urllib.parse import urlparse
 
 from ._common import (
     CACHE_FOLDER,
@@ -37,6 +38,34 @@ from pipelines.utils.utils import extract_dataset_datetime
 
 logger = logging.getLogger(__name__)
 edc_config = get_edc_config()
+
+
+def get_url_headers(url: str) -> dict:
+    """
+    Get url HTTP headers
+    :param url: static dataset url
+    :return: HTTP headers
+    """
+    try:
+        response = requests.head(url, timeout=5)
+        response.raise_for_status()
+        return response.headers
+    except requests.exceptions.RequestException as ex:
+        logger.error(f"Exception raised: {ex}")
+        return {}
+
+
+def extract_dataset_datetime(url: str) -> str:
+    """
+    Extract the dataset datetime from dataset location url
+    which can be found in the static dataset url headers
+    @param url: static dataset url
+    @return: dataset datetime under format "YYYYMMDD-HHMMSS"
+    """
+    metadata = get_url_headers(url)
+    parsed_url = urlparse(metadata.get("location"))
+    path_parts = parsed_url.path.strip("/").split("/")
+    return path_parts[-2]
 
 
 def check_table_existence(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:

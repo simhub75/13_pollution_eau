@@ -18,12 +18,41 @@ from zipfile import ZipFile
 
 import duckdb
 import requests
+from urllib.parse import urlparse
 
 from ._common import CACHE_FOLDER, DUCKDB_FILE, clear_cache
 from ._config_edc import get_edc_config, create_edc_yearly_filename
 
 logger = logging.getLogger(__name__)
 edc_config = get_edc_config()
+
+
+def get_url_headers(url: str) -> dict:
+    """
+    Get url HTTP headers
+    :param url: static dataset url
+    :return: HTTP headers
+    """
+    try:
+        response = requests.head(url, timeout=5)
+        response.raise_for_status()
+        return response.headers
+    except requests.exceptions.RequestException as ex:
+        logger.error(f"Exception raised: {ex}")
+        return {}
+
+
+def extract_dataset_datetime(url: str) -> str:
+    """
+    Extract the dataset datetime from dataset location url
+    which can be found in the static dataset url headers
+    @param url: static dataset url
+    @return: dataset datetime under format "YYYYMMDD-HHMMSS"
+    """
+    metadata = get_url_headers(url)
+    parsed_url = urlparse(metadata.get("location"))
+    path_parts = parsed_url.path.strip("/").split("/")
+    return path_parts[-2]
 
 
 def check_table_existence(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
@@ -33,12 +62,12 @@ def check_table_existence(conn: duckdb.DuckDBPyConnection, table_name: str) -> b
     :param table_name: The table name to check existence
     :return: True if the table exists, False if not
     """
-    query = f"""
+    query = """
         SELECT COUNT(*)
         FROM information_schema.tables
-        WHERE table_name = '{table_name}'
+        WHERE table_name = ?
         """
-    conn.execute(query)
+    conn.execute(query, (table_name,))
     return list(conn.fetchone())[0] == 1
 
 
@@ -62,6 +91,10 @@ def download_extract_insert_yearly_edc_data(year: str):
     FILES = edc_config["files"]
 
     logger.info(f"Processing EDC dataset for {year}...")
+
+    dataset_datetime = extract_dataset_datetime(DATA_URL)
+    logger.info(f"   EDC dataset datetime: {dataset_datetime}")
+
     response = requests.get(DATA_URL, stream=True)
     with open(ZIP_FILE, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
@@ -84,27 +117,28 @@ def download_extract_insert_yearly_edc_data(year: str):
             ),
         )
 
-        if check_table_existence(conn=conn, table_name=f"{file_info['table_name']}"):
+        if check_table_existence(conn=conn, table_name=file_info["table_name"]):
             query = f"""
-                DELETE FROM {f"{file_info['table_name']}"}
-                WHERE de_partition = CAST({year} as INTEGER)
+                DELETE FROM {file_info["table_name"]}
+                WHERE de_partition = CAST(? AS INTEGER)
                 ;
             """
-            conn.execute(query)
-            query_start = f"INSERT INTO {f'{file_info["table_name"]}'} "
+            conn.execute(query, (year,))
+            query_start = f"INSERT INTO {file_info['table_name']} "
 
         else:
-            query_start = f"CREATE TABLE {f'{file_info["table_name"]}'} AS "
+            query_start = f"CREATE TABLE {file_info['table_name']} AS "
 
-        query_select = f"""
-            SELECT 
+        query_select = """
+            SELECT
                 *,
-                CAST({year} AS INTEGER) AS de_partition,
-                current_date            AS de_ingestion_date
-            FROM read_csv('{filepath}', header=true, delim=',');
+                CAST(? AS INTEGER)      AS de_partition,
+                current_date            AS de_ingestion_date,
+                ?                       AS de_dataset_datetime
+            FROM read_csv(?, header=true, delim=',');
         """
 
-        conn.execute(query_start + query_select)
+        conn.execute(query_start + query_select, (year, dataset_datetime, filepath))
 
     conn.close()
 

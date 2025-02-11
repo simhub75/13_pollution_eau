@@ -23,8 +23,9 @@ import duckdb
 import requests
 
 from ._common import CACHE_FOLDER, DUCKDB_FILE, clear_cache
-from ._config_edc import get_edc_config, create_edc_yearly_filename
+from ._config_edc import create_edc_yearly_filename, get_edc_config
 from pipelines.utils.utils import extract_dataset_datetime
+
 
 logger = logging.getLogger(__name__)
 edc_config = get_edc_config()
@@ -273,6 +274,7 @@ def execute(
     :param custom_years: List of years to process when refresh_type is "custom"
     :param drop_tables: Whether to drop edc tables in the database before data insertion.
     """
+    # Build database
     process_edc_datasets(
         refresh_type=refresh_type, custom_years=custom_years, drop_tables=drop_tables
     )

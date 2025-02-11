@@ -126,6 +126,11 @@ Les modèles de données sont organisés dans le dossier `dbt_/models`. La struc
 uv run pipelines/run.py run build_database --refresh-type last --drop-tables
 ```
 
+* 4. Suppression des tables, puis téléchargement des données de la dernière année
+```bash
+uv run pipelines/run.py run build_database --refresh-type last --drop-tables
+```
+
 ### Comment télécharger la database depuis S3
 
 

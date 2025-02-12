@@ -25,6 +25,7 @@ import requests
 from ._common import CACHE_FOLDER, DUCKDB_FILE, clear_cache
 from ._config_edc import create_edc_yearly_filename, get_edc_config
 from pipelines.utils.utils import extract_dataset_datetime
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 edc_config = get_edc_config()
@@ -71,26 +72,52 @@ def download_extract_insert_yearly_edc_data(year: str):
     logger.info(f"   EDC dataset datetime: {dataset_datetime}")
 
     response = requests.get(DATA_URL, stream=True)
+    response_size = int(response.headers.get("content-length", 0))
+    # common style for the progressbar dans cli
+    tqdm_common = {
+        "ncols": 100,
+        "bar_format": "{l_bar}{bar}| {n_fmt}/{total_fmt}",
+    }
+
+    # Open the ZIP file for writing
     with open(ZIP_FILE, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+        with tqdm(
+            total=response_size,
+            unit="B",
+            unit_scale=True,
+            desc="Processing",
+            **tqdm_common,
+        ) as pbar:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                pbar.update(len(chunk))
 
     logger.info("   Extracting files...")
     with ZipFile(ZIP_FILE, "r") as zip_ref:
-        zip_ref.extractall(EXTRACT_FOLDER)
+        file_list = zip_ref.namelist()
+        with tqdm(
+            total=len(file_list), unit="file", desc="Extracting", **tqdm_common
+        ) as pbar:
+            for file in file_list:
+                zip_ref.extract(file, EXTRACT_FOLDER)  # Extract each file
+                pbar.update(1)
 
     logger.info("   Creating or updating tables in the database...")
     conn = duckdb.connect(DUCKDB_FILE)
 
-    for file_info in FILES.values():
-        filepath = os.path.join(
-            EXTRACT_FOLDER,
-            create_edc_yearly_filename(
-                file_name_prefix=file_info["file_name_prefix"],
-                file_extension=file_info["file_extension"],
-                year=year,
-            ),
-        )
+    total_operations = len(FILES)
+    with tqdm(
+        total=total_operations, unit="operation", desc="Handling", **tqdm_common
+    ) as pbar:
+        for file_info in FILES.values():
+            filepath = os.path.join(
+                EXTRACT_FOLDER,
+                create_edc_yearly_filename(
+                    file_name_prefix=file_info["file_name_prefix"],
+                    file_extension=file_info["file_extension"],
+                    year=year,
+                ),
+            )
 
         if check_table_existence(conn=conn, table_name=file_info["table_name"]):
             query = f"""
@@ -135,7 +162,7 @@ def drop_edc_tables():
         conn.execute(query)
     return True
 
-
+ 
 def get_edc_dataset_years_to_update() -> List:
     """
     Return the list of EDC dataset's years that are no longer up to date

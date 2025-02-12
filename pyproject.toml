@@ -21,6 +21,7 @@ dependencies = [
     "ibis-framework[duckdb]>=9.5.0,<10",
     "dbt-core>=1.9.2,<2",
     "dbt-duckdb>=1.9.1,<2",
+    "tqdm>=4.67.1,<5",
 ]
 
 [dependency-groups]

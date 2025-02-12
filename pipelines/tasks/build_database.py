@@ -162,7 +162,7 @@ def drop_edc_tables():
         conn.execute(query)
     return True
 
- 
+
 def get_edc_dataset_years_to_update() -> List:
     """
     Return the list of EDC dataset's years that are no longer up to date

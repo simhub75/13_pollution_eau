@@ -75,9 +75,10 @@ def download_extract_insert_yearly_edc_data(year: str):
 
     logger.info(f"Processing EDC dataset for {year}...")
 
-    download_file_from_https(url=DATA_URL, filepath=ZIP_FILE)
     dataset_datetime = extract_dataset_datetime(DATA_URL)
     logger.info(f"   EDC dataset datetime: {dataset_datetime}")
+
+    download_file_from_https(url=DATA_URL, filepath=ZIP_FILE)
 
     logger.info("   Extracting files...")
     with ZipFile(ZIP_FILE, "r") as zip_ref:

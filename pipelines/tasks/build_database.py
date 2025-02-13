@@ -7,6 +7,7 @@ Args:
 
 Examples:
     - build_database --refresh-type all : Process all years
+    - build_database --refresh-type on_change : Process only years whose data has been modified from the source
     - build_database --refresh-type last : Process last year only
     - build_database --refresh-type custom --custom-years 2018,2024 : Process only the years 2018 and 2024
     - build_database --refresh-type last --drop-tables : Drop tables and process last year only
@@ -14,12 +15,12 @@ Examples:
 
 import logging
 import os
+from datetime import datetime
 from typing import List, Literal
 from zipfile import ZipFile
 
 import duckdb
 import requests
-from urllib.parse import urlparse
 
 from ._common import (
     CACHE_FOLDER,
@@ -31,37 +32,10 @@ from ._common import (
 from ._config_edc import create_edc_yearly_filename, get_edc_config
 from tqdm import tqdm
 
+from pipelines.utils.utils import extract_dataset_datetime
 
 logger = logging.getLogger(__name__)
 edc_config = get_edc_config()
-
-
-def get_url_headers(url: str) -> dict:
-    """
-    Get url HTTP headers
-    :param url: static dataset url
-    :return: HTTP headers
-    """
-    try:
-        response = requests.head(url, timeout=5)
-        response.raise_for_status()
-        return response.headers
-    except requests.exceptions.RequestException as ex:
-        logger.error(f"Exception raised: {ex}")
-        return {}
-
-
-def extract_dataset_datetime(url: str) -> str:
-    """
-    Extract the dataset datetime from dataset location url
-    which can be found in the static dataset url headers
-    @param url: static dataset url
-    @return: dataset datetime under format "YYYYMMDD-HHMMSS"
-    """
-    metadata = get_url_headers(url)
-    parsed_url = urlparse(metadata.get("location"))
-    path_parts = parsed_url.path.strip("/").split("/")
-    return path_parts[-2]
 
 
 def check_table_existence(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
@@ -176,8 +150,75 @@ def drop_edc_tables():
     return True
 
 
+def get_edc_dataset_years_to_update() -> List:
+    """
+    Return the list of EDC dataset's years that are no longer up to date
+    compared to the site www.data.gouv.fr
+    """
+    available_years = edc_config["source"]["available_years"]
+    update_years = []
+
+    logger.info("Check that EDC dataset are up to date according to www.data.gouv.fr")
+
+    for year in available_years:
+        data_url = (
+            edc_config["source"]["base_url"]
+            + edc_config["source"]["yearly_files_infos"][year]["id"]
+        )
+        logger.info(f"   Check EDC dataset datetime for {year}")
+
+        conn = duckdb.connect(DUCKDB_FILE)
+
+        files = edc_config["files"]
+
+        for file_info in files.values():
+            if check_table_existence(
+                conn=conn, table_name=f"{file_info['table_name']}"
+            ):
+                query = f"""
+                    SELECT de_dataset_datetime
+                    FROM {file_info["table_name"]}
+                    WHERE de_partition = CAST(? as INTEGER)
+                    ;
+                """
+                conn.execute(query, (year,))
+                current_dataset_datetime = conn.fetchone()[0]
+                logger.info(
+                    f"   Database - EDC dataset datetime: {current_dataset_datetime}"
+                )
+
+                format_str = "%Y%m%d-%H%M%S"
+                last_data_gouv_dataset_datetime = extract_dataset_datetime(data_url)
+                logger.info(
+                    f"   Datagouv - EDC dataset datetime: "
+                    f"{last_data_gouv_dataset_datetime}"
+                )
+
+                last_data_gouv_dataset_datetime = datetime.strptime(
+                    last_data_gouv_dataset_datetime, format_str
+                )
+                current_dataset_datetime = datetime.strptime(
+                    current_dataset_datetime, format_str
+                )
+
+                if last_data_gouv_dataset_datetime > current_dataset_datetime:
+                    update_years.append(year)
+
+            else:
+                # EDC table will be created with process_edc_datasets
+                update_years.append(year)
+            # Only one check of a file is needed because the update is done for the whole
+            break
+
+    if update_years:
+        logger.info(f"   EDC dataset update is necessary for {update_years}")
+    else:
+        logger.info("   All EDC dataset are already up to date")
+    return update_years
+
+
 def process_edc_datasets(
-    refresh_type: Literal["all", "last", "custom"] = "last",
+    refresh_type: Literal["all", "on_change", "last", "custom"] = "last",
     custom_years: List[str] = None,
     drop_tables: bool = False,
 ):
@@ -185,6 +226,7 @@ def process_edc_datasets(
     Process the EDC datasets.
     :param refresh_type: Refresh type to run
         - "all": Drop edc tables and import the data for every possible year.
+        - "on_change": Refresh only changed data from source
         - "last": Refresh the data only for the last available year
         - "custom": Refresh the data for the years specified in the list custom_years
     :param custom_years: years to update
@@ -195,6 +237,8 @@ def process_edc_datasets(
 
     if refresh_type == "all":
         years_to_update = available_years
+    elif refresh_type == "on_change":
+        years_to_update = get_edc_dataset_years_to_update()
     elif refresh_type == "last":
         years_to_update = available_years[-1:]
     elif refresh_type == "custom":
@@ -239,7 +283,7 @@ def execute(
     """
     Execute the EDC dataset processing with specified parameters.
 
-    :param refresh_type: Type of refresh to perform ("all", "last", or "custom")
+    :param refresh_type: Type of refresh to perform ("all", "on_change", last", or "custom")
     :param custom_years: List of years to process when refresh_type is "custom"
     :param drop_tables: Whether to drop edc tables in the database before data insertion.
     """

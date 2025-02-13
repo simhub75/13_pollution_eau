@@ -217,6 +217,19 @@ def get_edc_dataset_years_to_update() -> List:
     return update_years
 
 
+def drop_edc_tables():
+    """Drop tables using tables names defined in _config_edc.py"""
+    conn = duckdb.connect(DUCKDB_FILE)
+    tables_names = [
+        file_info["table_name"] for file_info in edc_config["files"].values()
+    ]
+    for table_name in tables_names:
+        query = f"DROP TABLE IF EXISTS {table_name};"
+        logger.info(f"Drop table {table_name} (query: {query})")
+        conn.execute(query)
+    return True
+
+
 def process_edc_datasets(
     refresh_type: Literal["all", "on_change", "last", "custom"] = "last",
     custom_years: List[str] = None,

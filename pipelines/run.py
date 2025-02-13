@@ -104,6 +104,24 @@ def run_download_database(env):
     task_func(env)
 
 
+@run.command("download_database_https")
+@click.option(
+    "--env",
+    type=click.Choice(["dev", "prod"]),
+    default=None,
+    help="Environment to download from. It will override environment defined in .env",
+)
+def run_download_database_https(env):
+    """Download database from S3 via HTTPS."""
+    if env is not None:
+        os.environ["ENV"] = env
+    env = get_environment(default="prod")
+    logger.info(f"Running on env {env}")
+    module = importlib.import_module("tasks.download_database_https")
+    task_func = getattr(module, "execute")
+    task_func(env)
+
+
 @run.command("upload_database")
 @click.option(
     "--env",

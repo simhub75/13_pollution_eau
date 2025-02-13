@@ -20,9 +20,14 @@ from typing import List, Literal
 from zipfile import ZipFile
 
 import duckdb
-import requests
 
-from ._common import CACHE_FOLDER, DUCKDB_FILE, clear_cache
+from ._common import (
+    CACHE_FOLDER,
+    DUCKDB_FILE,
+    tqdm_common,
+    clear_cache,
+    download_file_from_https,
+)
 from ._config_edc import create_edc_yearly_filename, get_edc_config
 from pipelines.utils.utils import extract_dataset_datetime
 from tqdm import tqdm
@@ -70,27 +75,8 @@ def download_extract_insert_yearly_edc_data(year: str):
 
     dataset_datetime = extract_dataset_datetime(DATA_URL)
     logger.info(f"   EDC dataset datetime: {dataset_datetime}")
-
-    response = requests.get(DATA_URL, stream=True)
-    response_size = int(response.headers.get("content-length", 0))
-    # common style for the progressbar dans cli
-    tqdm_common = {
-        "ncols": 100,
-        "bar_format": "{l_bar}{bar}| {n_fmt}/{total_fmt}",
-    }
-
-    # Open the ZIP file for writing
-    with open(ZIP_FILE, "wb") as f:
-        with tqdm(
-            total=response_size,
-            unit="B",
-            unit_scale=True,
-            desc="Processing",
-            **tqdm_common,
-        ) as pbar:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-                pbar.update(len(chunk))
+    
+    download_file_from_https(url=DATA_URL, filepath=ZIP_FILE)
 
     logger.info("   Extracting files...")
     with ZipFile(ZIP_FILE, "r") as zip_ref:

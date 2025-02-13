@@ -28,7 +28,7 @@ def upload_database_to_storage(env):
     db_path = DUCKDB_FILE  # Fichier local
     s3_path = get_s3_path(env)  # Destination sur S3
 
-    s3.upload_object(db_path, s3_path)
+    s3.upload_object(local_path=db_path, file_key=s3_path, public_read=True)
     logger.info(f"✅ Base uploadée sur s3://{s3.bucket_name}/{s3_path}")
 
 

@@ -30,9 +30,8 @@ from ._common import (
     download_file_from_https,
 )
 from ._config_edc import create_edc_yearly_filename, get_edc_config
-from tqdm import tqdm
-
 from pipelines.utils.utils import extract_dataset_datetime
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 edc_config = get_edc_config()

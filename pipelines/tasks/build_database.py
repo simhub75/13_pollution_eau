@@ -130,7 +130,6 @@ def download_extract_insert_yearly_edc_data(year: str):
                     ?                       AS de_dataset_datetime
                 FROM read_csv(?, header=true, delim=',');
             """
-            print(file_info['table_name'])
             conn.execute(query_start + query_select, (year, dataset_datetime, filepath))
             pbar.update(1)
 

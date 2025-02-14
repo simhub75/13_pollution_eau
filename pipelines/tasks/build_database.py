@@ -12,7 +12,7 @@ Examples:
     - build_database --refresh-type last --drop-tables : Drop tables and process last year only
     - build_database --refresh-type all --check_update : Process only years whose data has been modified from the source
     - build_database --refresh-type last --check_update : Process last year if its data has been modified from the source
-    - build_database --refresh-type custom --custom-years 2018,2024 --check_update True : Process only the years 2018 and 2024 if their data has been modified from the source
+    - build_database --refresh-type custom --custom-years 2018,2024 --check_update : Process only the years 2018 and 2024 if their data has been modified from the source
 """
 
 import logging
